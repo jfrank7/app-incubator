@@ -3,19 +3,30 @@ from app.schemas.form import FormAnswers, ProductSpec, ArchitectureBlueprint
 from app.schemas.pipeline import RunState, QACheck, QAResults
 
 
-def test_form_answers_requires_exactly_3_actions():
+def _make_form(**overrides):
+    defaults = dict(
+        app_goal="track caffeine",
+        target_user="health-conscious adults",
+        top_3_actions=["log drink", "view daily total", "set reduction goal"],
+        must_have_screens=["dashboard"],
+        works_offline=True,
+        needs_notifications=False,
+        core_data_entities=["CaffeineEntry"],
+        style_notes="clean minimal",
+        constraints_non_goals="no social features",
+    )
+    defaults.update(overrides)
+    return defaults
+
+
+def test_form_answers_rejects_fewer_than_3_actions():
     with pytest.raises(Exception):
-        FormAnswers(
-            app_goal="track caffeine",
-            target_user="health-conscious adults",
-            top_3_actions=["log drink", "view total"],  # only 2
-            must_have_screens=["dashboard"],
-            works_offline=True,
-            needs_notifications=False,
-            core_data_entities=["CaffeineEntry"],
-            style_notes="clean minimal",
-            constraints_non_goals="no social features",
-        )
+        FormAnswers(**_make_form(top_3_actions=["log drink", "view total"]))
+
+
+def test_form_answers_rejects_more_than_3_actions():
+    with pytest.raises(Exception):
+        FormAnswers(**_make_form(top_3_actions=["a", "b", "c", "d"]))
 
 
 def test_form_answers_valid():
@@ -34,7 +45,7 @@ def test_form_answers_valid():
     assert fa.auth_required is True
 
 
-def test_product_spec_auth_always_true():
+def test_product_spec_auth_defaults_to_true():
     from app.schemas.form import ScreenSpec, EntitySpec
     spec = ProductSpec(
         app_name="Caffeine Tracker",
@@ -46,7 +57,7 @@ def test_product_spec_auth_always_true():
         data_entities=[EntitySpec(name="CaffeineEntry", fields=["id", "mg", "timestamp"])],
         offline_support=True,
         notifications=False,
-        auth_required=True,
+        # auth_required omitted — testing default
         payments_placeholder=False,
         style_notes="minimal",
         non_goals=["social"],

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, TypedDict
 from pydantic import BaseModel, Field
 from app.schemas.form import FormAnswers, ProductSpec, ArchitectureBlueprint, FilePlan
@@ -16,7 +16,7 @@ class QAResults(BaseModel):
     passed: bool
     checks: list[QACheck]
     summary: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RunState(TypedDict):
