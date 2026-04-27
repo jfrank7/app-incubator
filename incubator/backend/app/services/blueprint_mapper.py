@@ -33,7 +33,10 @@ BACKEND_BASE_FILES: list[tuple[str, str]] = [
 MODULE_FILES: dict[str, list[tuple[str, str]]] = {
     "payments_placeholder": [
         ("apps/mobile/app/paywall.tsx", "mobile/modules/payments_placeholder/app/paywall.tsx.j2"),
-        ("backend/app/api/billing.py", "backend/modules/payments_placeholder/app/api/billing.py.j2"),
+        (
+            "backend/app/api/billing.py",
+            "backend/modules/payments_placeholder/app/api/billing.py.j2",
+        ),
         (
             "backend/app/services/billing.py",
             "backend/modules/payments_placeholder/app/services/billing.py.j2",
@@ -41,7 +44,10 @@ MODULE_FILES: dict[str, list[tuple[str, str]]] = {
     ],
     "list_detail_crud": [
         ("apps/mobile/app/(tabs)/list.tsx", "mobile/modules/list_detail/app/(tabs)/list.tsx.j2"),
-        ("apps/mobile/app/(tabs)/detail.tsx", "mobile/modules/list_detail/app/(tabs)/detail.tsx.j2"),
+        (
+            "apps/mobile/app/(tabs)/detail.tsx",
+            "mobile/modules/list_detail/app/(tabs)/detail.tsx.j2",
+        ),
         ("backend/app/api/items.py", "backend/modules/list_detail/app/api/items.py.j2"),
         ("backend/app/models/item.py", "backend/modules/list_detail/app/models/item.py.j2"),
     ],
