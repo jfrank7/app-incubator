@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta, timezone
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 import os
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from passlib.context import CryptContext
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 ALGORITHM = "HS256"
@@ -33,5 +34,5 @@ def decode_token(token: str) -> str:
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     sub = payload.get("sub")
     if sub is None:
-        raise JWTError("No subject")
+        raise jwt.InvalidTokenError("No subject")
     return sub
