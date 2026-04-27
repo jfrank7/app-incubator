@@ -21,4 +21,16 @@ export const api = {
   listRuns: () => request<RunListItem[]>('/runs'),
 
   getRun: (id: string) => request<Run>(`/runs/${id}`),
+
+  approveSpec: (id: string, spec: unknown) =>
+    request<Run>(`/runs/${id}/approve-spec`, { method: 'POST', body: JSON.stringify({ spec }) }),
+
+  approveBlueprint: (id: string, blueprint: unknown) =>
+    request<Run>(`/runs/${id}/approve-blueprint`, { method: 'POST', body: JSON.stringify({ blueprint }) }),
+
+  approveShell: (id: string) =>
+    request<Run>(`/runs/${id}/approve-shell`, { method: 'POST', body: JSON.stringify({}) }),
+
+  getArtifacts: (id: string) =>
+    request<{ product_spec: unknown; blueprint: unknown; stage_logs: unknown[] }>(`/runs/${id}/artifacts`),
 }

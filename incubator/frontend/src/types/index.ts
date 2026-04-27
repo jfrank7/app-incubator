@@ -17,7 +17,17 @@ export interface CreateRunRequest {
   form_answers: FormAnswers
 }
 
-export type RunStatus = 'pending' | 'running' | 'done' | 'failed'
+export type RunStatus =
+  | 'pending'
+  | 'generating_spec'
+  | 'awaiting_spec_review'
+  | 'generating_blueprint'
+  | 'awaiting_blueprint_review'
+  | 'generating_shell'
+  | 'awaiting_shell_review'
+  | 'building_full'
+  | 'done'
+  | 'failed'
 
 export interface RunListItem {
   id: string
