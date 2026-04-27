@@ -13,12 +13,17 @@ const STATUS_COLOR: Record<string, string> = {
 export default function RunList() {
   const [runs, setRuns] = useState<RunListItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.listRuns().then(setRuns).finally(() => setLoading(false))
+    api.listRuns()
+      .then(setRuns)
+      .catch(err => setError(String(err)))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <p>Loading...</p>
+  if (error) return <p style={{ color: 'red' }}>{error}</p>
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>

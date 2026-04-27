@@ -1,15 +1,15 @@
 export interface FormAnswers {
   app_goal: string
   target_user: string
-  top_3_actions: [string, string, string]
+  top_3_actions: string[]
   must_have_screens: string[]
   works_offline: boolean
   needs_notifications: boolean
   core_data_entities: string[]
   style_notes: string
   constraints_non_goals: string
-  include_payments_placeholder: boolean
-  auth_required: boolean
+  include_payments_placeholder?: boolean
+  auth_required?: boolean
 }
 
 export interface CreateRunRequest {
@@ -36,10 +36,8 @@ export interface Run {
 }
 
 export interface SSEEvent {
-  stage?: string
-  status?: string
-  log?: string
+  stage: string
+  message: string
   done?: boolean
   final_status?: string
-  ts: string
 }

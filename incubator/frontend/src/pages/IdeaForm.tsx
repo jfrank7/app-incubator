@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { FormAnswers } from '../types'
 
@@ -25,7 +25,7 @@ export default function IdeaForm() {
   const [error, setError] = useState<string | null>(null)
 
   const updateAction = (i: number, val: string) => {
-    const actions = [...form.top_3_actions] as [string, string, string]
+    const actions = [...form.top_3_actions]
     actions[i] = val
     setForm({ ...form, top_3_actions: actions })
   }
@@ -40,14 +40,19 @@ export default function IdeaForm() {
     setForm({ ...form, [field]: [...form[field], ''] })
   }
 
+  const removeListItem = (field: 'must_have_screens' | 'core_data_entities', i: number) => {
+    const list = form[field].filter((_, idx) => idx !== i)
+    setForm({ ...form, [field]: list.length > 0 ? list : [''] })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     if (!idea.trim()) { setError('Idea is required'); return }
     setLoading(true)
     try {
-      const run = await api.createRun({ raw_idea: idea, form_answers: form })
-      navigate(`/runs/${run.id}`)
+      await api.createRun({ raw_idea: idea, form_answers: form })
+      navigate('/runs')
     } catch (err) {
       setError(String(err))
     } finally {
@@ -58,7 +63,7 @@ export default function IdeaForm() {
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>
       <h1>App Incubator</h1>
-      <a href="/runs">View run history &rarr;</a>
+      <Link to="/runs">View run history &rarr;</Link>
       <form onSubmit={handleSubmit} style={{ marginTop: 24 }}>
         <section>
           <h2>Your app idea</h2>
@@ -88,20 +93,27 @@ export default function IdeaForm() {
 
           <label>Must-have screens</label>
           {form.must_have_screens.map((s, i) => (
-            <input key={i} value={s} onChange={e => updateListField('must_have_screens', i, e.target.value)} style={{ width: '100%', marginBottom: 4 }} required />
+            <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <input value={s} onChange={e => updateListField('must_have_screens', i, e.target.value)} style={{ flex: 1 }} required />
+              <button type="button" onClick={() => removeListItem('must_have_screens', i)}>−</button>
+            </div>
           ))}
           <button type="button" onClick={() => addListItem('must_have_screens')}>+ screen</button>
 
           <label>Core data entities</label>
           {form.core_data_entities.map((s, i) => (
-            <input key={i} value={s} onChange={e => updateListField('core_data_entities', i, e.target.value)} style={{ width: '100%', marginBottom: 4 }} required />
+            <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <input value={s} onChange={e => updateListField('core_data_entities', i, e.target.value)} style={{ flex: 1 }} required />
+              <button type="button" onClick={() => removeListItem('core_data_entities', i)}>−</button>
+            </div>
           ))}
           <button type="button" onClick={() => addListItem('core_data_entities')}>+ entity</button>
 
           <div style={{ marginTop: 12 }}>
             <label><input type="checkbox" checked={form.works_offline} onChange={e => setForm({ ...form, works_offline: e.target.checked })} /> Works offline</label>
             <label style={{ marginLeft: 16 }}><input type="checkbox" checked={form.needs_notifications} onChange={e => setForm({ ...form, needs_notifications: e.target.checked })} /> Needs notifications</label>
-            <label style={{ marginLeft: 16 }}><input type="checkbox" checked={form.include_payments_placeholder} onChange={e => setForm({ ...form, include_payments_placeholder: e.target.checked })} /> Include payments placeholder</label>
+            <label style={{ marginLeft: 16 }}><input type="checkbox" checked={form.include_payments_placeholder ?? false} onChange={e => setForm({ ...form, include_payments_placeholder: e.target.checked })} /> Include payments placeholder</label>
+            <label style={{ marginLeft: 16 }}><input type="checkbox" checked={form.auth_required ?? true} onChange={e => setForm({ ...form, auth_required: e.target.checked })} /> Require auth</label>
           </div>
 
           <label>Style notes</label>
