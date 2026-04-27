@@ -1,0 +1,9 @@
+export function logEvent(name: string, params?: Record<string, unknown>): void {
+  if (__DEV__) {
+    console.log('[analytics]', name, params)
+  }
+}
+
+export function logError(error: Error, context?: Record<string, unknown>): void {
+  console.error('[error]', error.message, context)
+}

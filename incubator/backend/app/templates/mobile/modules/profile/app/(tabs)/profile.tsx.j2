@@ -1,0 +1,21 @@
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { useSession } from '@/lib/storage/session'
+
+export default function ProfileScreen() {
+  const { signOut } = useSession()
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Profile</Text>
+      <TouchableOpacity style={styles.button} onPress={signOut}>
+        <Text style={styles.buttonText}>Sign out</Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 24 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 24 },
+  button: { backgroundColor: '#dc2626', borderRadius: 8, padding: 14, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: '600' },
+})

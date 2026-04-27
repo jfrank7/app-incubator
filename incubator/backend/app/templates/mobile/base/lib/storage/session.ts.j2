@@ -1,0 +1,43 @@
+import * as SecureStore from 'expo-secure-store'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+
+interface SessionContext {
+  session: string | null
+  isLoading: boolean
+  signIn: (accessToken: string, refreshToken: string) => Promise<void>
+  signOut: () => Promise<void>
+}
+
+const SessionCtx = createContext<SessionContext | null>(null)
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    SecureStore.getItemAsync('access_token').then(token => {
+      setSession(token)
+      setIsLoading(false)
+    })
+  }, [])
+
+  const signIn = async (accessToken: string, refreshToken: string) => {
+    await SecureStore.setItemAsync('access_token', accessToken)
+    await SecureStore.setItemAsync('refresh_token', refreshToken)
+    setSession(accessToken)
+  }
+
+  const signOut = async () => {
+    await SecureStore.deleteItemAsync('access_token')
+    await SecureStore.deleteItemAsync('refresh_token')
+    setSession(null)
+  }
+
+  return <SessionCtx.Provider value={{ session, isLoading, signIn, signOut }}>{children}</SessionCtx.Provider>
+}
+
+export function useSession(): SessionContext {
+  const ctx = useContext(SessionCtx)
+  if (!ctx) throw new Error('useSession must be used within SessionProvider')
+  return ctx
+}

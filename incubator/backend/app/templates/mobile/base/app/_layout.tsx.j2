@@ -1,0 +1,15 @@
+import { Stack } from 'expo-router'
+import { useSession } from '@/lib/storage/session'
+
+export default function RootLayout() {
+  const { isLoading } = useSession()
+
+  if (isLoading) return null
+
+  return (
+    <Stack>
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
+  )
+}

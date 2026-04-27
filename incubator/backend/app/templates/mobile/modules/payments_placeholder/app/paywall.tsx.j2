@@ -1,0 +1,29 @@
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { useRouter } from 'expo-router'
+
+export default function PaywallScreen() {
+  const router = useRouter()
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>{{ app_name }} Pro</Text>
+      <Text style={styles.subtitle}>Unlock all features</Text>
+      <Text style={styles.price}>$4.99 / month</Text>
+      <TouchableOpacity style={styles.button} onPress={() => alert('Billing not yet implemented')}>
+        <Text style={styles.buttonText}>Subscribe (placeholder)</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => router.back()}>
+        <Text style={styles.skip}>Maybe later</Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#666', marginBottom: 24 },
+  price: { fontSize: 20, fontWeight: '600', marginBottom: 32 },
+  button: { backgroundColor: '#2563eb', borderRadius: 8, padding: 16, width: '100%', alignItems: 'center', marginBottom: 16 },
+  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  skip: { color: '#888' },
+})
