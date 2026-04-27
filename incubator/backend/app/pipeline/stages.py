@@ -64,10 +64,11 @@ async def _update_run(run_id: str, **fields) -> None:
     async with _get_session() as session:
         result = await session.execute(select(Run).where(Run.id == run_id))
         run = result.scalar_one_or_none()
-        if run:
-            for k, v in fields.items():
-                setattr(run, k, v)
-            await session.commit()
+        if run is None:
+            raise RuntimeError(f"Run {run_id} not found")
+        for k, v in fields.items():
+            setattr(run, k, v)
+        await session.commit()
 
 
 async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnswers) -> None:
@@ -90,7 +91,10 @@ async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnsw
         await sse_manager.emit(run_id, "spec_generation", f"Spec ready: {spec.app_name}")
         await sse_manager.emit_done(run_id, "awaiting_spec_review")
     except Exception as e:
-        await _update_run(run_id, status="failed", error_summary=str(e))
+        try:
+            await _update_run(run_id, status="failed", error_summary=str(e))
+        except Exception:
+            pass  # best-effort; don't suppress original or block emit_done
         await sse_manager.emit_done(run_id, "failed")
         raise
 
@@ -114,7 +118,10 @@ async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
         await sse_manager.emit(run_id, "blueprint_generation", "Blueprint ready")
         await sse_manager.emit_done(run_id, "awaiting_blueprint_review")
     except Exception as e:
-        await _update_run(run_id, status="failed", error_summary=str(e))
+        try:
+            await _update_run(run_id, status="failed", error_summary=str(e))
+        except Exception:
+            pass  # best-effort; don't suppress original or block emit_done
         await sse_manager.emit_done(run_id, "failed")
         raise
 
@@ -151,7 +158,10 @@ async def run_shell_scaffolding(
         )
         await sse_manager.emit_done(run_id, "awaiting_shell_review")
     except Exception as e:
-        await _update_run(run_id, status="failed", error_summary=str(e))
+        try:
+            await _update_run(run_id, status="failed", error_summary=str(e))
+        except Exception:
+            pass  # best-effort; don't suppress original or block emit_done
         await sse_manager.emit_done(run_id, "failed")
         raise
 
@@ -184,6 +194,9 @@ async def run_full_scaffolding(
         await sse_manager.emit(run_id, "full_scaffolding", "App generated successfully")
         await sse_manager.emit_done(run_id, "done")
     except Exception as e:
-        await _update_run(run_id, status="failed", error_summary=str(e))
+        try:
+            await _update_run(run_id, status="failed", error_summary=str(e))
+        except Exception:
+            pass  # best-effort; don't suppress original or block emit_done
         await sse_manager.emit_done(run_id, "failed")
         raise
