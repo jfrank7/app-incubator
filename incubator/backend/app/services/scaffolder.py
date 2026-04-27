@@ -34,6 +34,7 @@ class ScaffolderService:
             "api_routes": blueprint.api_routes,
             "db_entities": blueprint.db_entities,
             "env_vars": blueprint.env_vars,
+            "shell_mode": False,
         }
 
     def scaffold(
@@ -41,8 +42,11 @@ class ScaffolderService:
         spec: ProductSpec,
         blueprint: ArchitectureBlueprint,
         output_dir: Path,
+        extra_context: dict | None = None,
     ) -> list[str]:
         context = self._build_context(spec, blueprint)
+        if extra_context:
+            context.update(extra_context)
         written: list[str] = []
 
         for file_plan in blueprint.file_plan:

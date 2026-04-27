@@ -14,7 +14,12 @@ async def db_session():
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with session_factory() as session:
-            yield session
+            from app.pipeline.stages import _session_override
+            token = _session_override.set(session)
+            try:
+                yield session
+            finally:
+                _session_override.reset(token)
     finally:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
