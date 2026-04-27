@@ -1,0 +1,41 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.db.database import init_db
+from app.auth.router import router as auth_router
+{% if "list_detail_crud" in selected_modules %}
+from app.api.items import router as items_router
+{% endif %}
+{% if "payments_placeholder" in selected_modules %}
+from app.api.billing import router as billing_router
+{% endif %}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+
+app = FastAPI(title="{{ app_name }}", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)
+{% if "list_detail_crud" in selected_modules %}
+app.include_router(items_router)
+{% endif %}
+{% if "payments_placeholder" in selected_modules %}
+app.include_router(billing_router)
+{% endif %}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "app": "{{ app_slug }}"}
