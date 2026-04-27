@@ -1,7 +1,6 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -22,10 +21,6 @@ from app.schemas.run import (
 from app.services.sse_manager import sse_manager
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 @router.post("", response_model=RunResponse, status_code=201)
@@ -161,12 +156,14 @@ async def stream_run(run_id: str):
     async def event_generator():
         try:
             while True:
-                data = await asyncio.wait_for(q.get(), timeout=30.0)
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'stage': 'heartbeat', 'message': 'ping'})}\n\n"
+                    continue
                 if data is None:
                     break
                 yield f"data: {data}\n\n"
-        except asyncio.TimeoutError:
-            yield f"data: {json.dumps({'stage': 'heartbeat', 'message': 'ping'})}\n\n"
         finally:
             sse_manager.unsubscribe(run_id, q)
 
