@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, field_validator
 
 
@@ -54,6 +56,13 @@ class FormAnswers(BaseModel):
 class ProductSpec(BaseModel):
     app_name: str
     app_slug: str
+
+    @field_validator("app_name")
+    @classmethod
+    def app_name_safe_for_jsx(cls, v: str) -> str:
+        if not re.match(r"^[A-Za-z0-9 _-]+$", v):
+            raise ValueError("app_name may only contain letters, numbers, spaces, or hyphens")
+        return v
     goal: str
     target_user: str
     screens: list[ScreenSpec]

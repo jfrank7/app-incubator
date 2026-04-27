@@ -75,4 +75,4 @@ def get_module_templates(modules: list[str]) -> list[str]:
     result: list[str] = []
     for m in modules:
         result.extend(MODULE_MANIFEST[m])
-    return result
+    return list(dict.fromkeys(result))
