@@ -46,8 +46,8 @@ class FormAnswers(BaseModel):
     @field_validator("top_3_actions")
     @classmethod
     def must_have_three_actions(cls, v: list[str]) -> list[str]:
-        if len(v) != 3:
-            raise ValueError("top_3_actions must contain exactly 3 items")
+        if len(v) < 1:
+            raise ValueError("top_3_actions must contain at least 1 item")
         return v
 
 

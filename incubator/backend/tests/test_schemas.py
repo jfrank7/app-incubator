@@ -20,14 +20,14 @@ def _make_form(**overrides):
     return defaults
 
 
-def test_form_answers_rejects_fewer_than_3_actions():
+def test_form_answers_rejects_empty_actions():
     with pytest.raises(Exception):
-        FormAnswers(**_make_form(top_3_actions=["log drink", "view total"]))
+        FormAnswers(**_make_form(top_3_actions=[]))
 
 
-def test_form_answers_rejects_more_than_3_actions():
-    with pytest.raises(Exception):
-        FormAnswers(**_make_form(top_3_actions=["a", "b", "c", "d"]))
+def test_form_answers_accepts_more_than_3_actions():
+    fa = FormAnswers(**_make_form(top_3_actions=["a", "b", "c", "d"]))
+    assert len(fa.top_3_actions) == 4
 
 
 def test_form_answers_valid():

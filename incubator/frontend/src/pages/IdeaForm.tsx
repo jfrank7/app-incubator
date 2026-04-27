@@ -24,23 +24,19 @@ export default function IdeaForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const updateAction = (i: number, val: string) => {
-    const actions = [...form.top_3_actions]
-    actions[i] = val
-    setForm({ ...form, top_3_actions: actions })
-  }
+  type ListField = 'top_3_actions' | 'must_have_screens' | 'core_data_entities'
 
-  const updateListField = (field: 'must_have_screens' | 'core_data_entities', i: number, val: string) => {
+  const updateListField = (field: ListField, i: number, val: string) => {
     const list = [...form[field]]
     list[i] = val
     setForm({ ...form, [field]: list })
   }
 
-  const addListItem = (field: 'must_have_screens' | 'core_data_entities') => {
+  const addListItem = (field: ListField) => {
     setForm({ ...form, [field]: [...form[field], ''] })
   }
 
-  const removeListItem = (field: 'must_have_screens' | 'core_data_entities', i: number) => {
+  const removeListItem = (field: ListField, i: number) => {
     const list = form[field].filter((_, idx) => idx !== i)
     setForm({ ...form, [field]: list.length > 0 ? list : [''] })
   }
@@ -86,10 +82,14 @@ export default function IdeaForm() {
           <label>Target user</label>
           <input value={form.target_user} onChange={e => setForm({ ...form, target_user: e.target.value })} style={{ width: '100%' }} required />
 
-          <label>Top 3 user actions</label>
+          <label>Key user actions</label>
           {form.top_3_actions.map((a, i) => (
-            <input key={i} value={a} onChange={e => updateAction(i, e.target.value)} placeholder={`Action ${i + 1}`} style={{ width: '100%', marginBottom: 4 }} required />
+            <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <input value={a} onChange={e => updateListField('top_3_actions', i, e.target.value)} placeholder={`Action ${i + 1}`} style={{ flex: 1 }} required />
+              <button type="button" onClick={() => removeListItem('top_3_actions', i)}>−</button>
+            </div>
           ))}
+          <button type="button" onClick={() => addListItem('top_3_actions')}>+ action</button>
 
           <label>Must-have screens</label>
           {form.must_have_screens.map((s, i) => (
