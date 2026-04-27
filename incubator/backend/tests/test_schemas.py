@@ -1,6 +1,7 @@
 import pytest
-from app.schemas.form import FormAnswers, ProductSpec, ArchitectureBlueprint
-from app.schemas.pipeline import RunState, QACheck, QAResults
+
+from app.schemas.form import FormAnswers, ProductSpec
+from app.schemas.pipeline import QACheck, QAResults
 
 
 def _make_form(**overrides):
@@ -46,7 +47,7 @@ def test_form_answers_valid():
 
 
 def test_product_spec_auth_defaults_to_true():
-    from app.schemas.form import ScreenSpec, EntitySpec
+    from app.schemas.form import EntitySpec, ScreenSpec
     spec = ProductSpec(
         app_name="Caffeine Tracker",
         app_slug="caffeine-tracker",

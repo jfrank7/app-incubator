@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Literal, TypedDict
+
 from pydantic import BaseModel, Field
-from app.schemas.form import FormAnswers, ProductSpec, ArchitectureBlueprint, FilePlan
+
+from app.schemas.form import ArchitectureBlueprint, FilePlan, FormAnswers, ProductSpec
 
 
 class QACheck(BaseModel):
