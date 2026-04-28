@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store'
+{% raw %}import * as SecureStore from 'expo-secure-store'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 interface SessionContext {
@@ -41,3 +41,4 @@ export function useSession(): SessionContext {
   if (!ctx) throw new Error('useSession must be used within SessionProvider')
   return ctx
 }
+{% endraw %}
