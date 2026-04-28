@@ -1,0 +1,16 @@
+from datetime import datetime, timezone
+from sqlalchemy import String, DateTime, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from app.db.database import Base
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

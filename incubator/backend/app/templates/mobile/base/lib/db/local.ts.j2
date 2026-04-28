@@ -1,0 +1,9 @@
+import * as SQLite from 'expo-sqlite'
+
+const db = SQLite.openDatabaseSync('{{ app_slug }}.db')
+
+export function initLocalDb(): void {
+  db.execSync(`PRAGMA journal_mode = WAL;`)
+}
+
+export { db }

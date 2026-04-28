@@ -1,0 +1,8 @@
+class BillingService:
+    """Placeholder billing service. Replace with real Stripe integration."""
+
+    async def get_subscription_status(self, user_id: str) -> dict:
+        return {"status": "free", "plan": None}
+
+    async def create_checkout_session(self, user_id: str, plan: str) -> dict:
+        raise NotImplementedError("Billing not implemented in v1")

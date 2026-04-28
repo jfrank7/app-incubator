@@ -1,0 +1,13 @@
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/billing", tags=["billing"])
+
+
+@router.get("/status")
+async def billing_status():
+    return {"status": "free", "plan": None, "note": "Billing not implemented"}
+
+
+@router.post("/webhook")
+async def billing_webhook():
+    return {"received": True}

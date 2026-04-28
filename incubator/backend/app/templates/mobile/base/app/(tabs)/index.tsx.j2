@@ -1,0 +1,16 @@
+import { View, Text, StyleSheet, ScrollView } from 'react-native'
+
+export default function HomeScreen() {
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>{{ app_name }}</Text>
+      <Text style={styles.subtitle}>{{ goal }}</Text>
+    </ScrollView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 24 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#666' },
+})
