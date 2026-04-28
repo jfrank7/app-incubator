@@ -43,6 +43,9 @@ export interface Run {
   app_name: string | null
   created_at: string
   updated_at: string
+  product_spec_json?: string | null
+  blueprint_json?: string | null
+  error_summary?: string | null
 }
 
 export interface SSEEvent {

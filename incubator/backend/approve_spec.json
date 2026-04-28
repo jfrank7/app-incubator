@@ -1,0 +1,68 @@
+{
+  "spec": {
+    "app_name": "Reflexa",
+    "app_slug": "reflexa",
+    "goal": "Measure and track user reaction times over time to benchmark and improve reflexes.",
+    "target_user": "Adults who want to benchmark and improve their reflexes",
+    "screens": [
+      {
+        "name": "Home",
+        "route": "/",
+        "description": "Landing screen with a primary call-to-action to start a recorded reflex test, plus a quick unrecorded test option and entry point to history."
+      },
+      {
+        "name": "Reflex Test",
+        "route": "/test",
+        "description": "Core test game screen showing a stimulus (color change/shape) and capturing the user's tap latency across multiple trials, then displaying the result."
+      },
+      {
+        "name": "Result",
+        "route": "/result",
+        "description": "Post-test summary showing average reaction time, best trial, and option to save (if recorded) or retry."
+      },
+      {
+        "name": "History",
+        "route": "/history",
+        "description": "Dashboard listing past ReflexResult entries with a trend chart and per-session details."
+      },
+      {
+        "name": "Sign In",
+        "route": "/auth",
+        "description": "Authentication screen for sign in and sign up to sync results to the user's account."
+      }
+    ],
+    "features": [
+      "Run a recorded reflex test with multiple trials",
+      "Quick unrecorded practice test",
+      "View reaction time history with trend visualization",
+      "Local persistence for offline use",
+      "User authentication",
+      "Dark mode support"
+    ],
+    "data_entities": [
+      {
+        "name": "ReflexResult",
+        "fields": [
+          "id",
+          "user_id",
+          "average_ms",
+          "best_ms",
+          "worst_ms",
+          "trial_count",
+          "trials",
+          "created_at"
+        ]
+      }
+    ],
+    "offline_support": true,
+    "notifications": false,
+    "auth_required": true,
+    "payments_placeholder": false,
+    "style_notes": "Polished, high-fidelity UI with clean animations and dark mode friendly palette; minimal, focused layouts emphasizing the test experience.",
+    "non_goals": [
+      "No social features",
+      "No leaderboards",
+      "No multiplayer"
+    ]
+  }
+}

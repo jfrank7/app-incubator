@@ -1,0 +1,14 @@
+{
+  "raw_idea": "reflexes app",
+  "form_answers": {
+    "app_goal": "measure and track user reaction times over time",
+    "target_user": "adults who want to benchmark and improve their reflexes",
+    "top_3_actions": ["run a reflex test", "view reaction time history", "quick unrecorded test"],
+    "must_have_screens": ["reflex test game", "history dashboard"],
+    "works_offline": true,
+    "needs_notifications": false,
+    "core_data_entities": ["ReflexResult"],
+    "style_notes": "polished, high-fidelity UI — clean animations, dark mode friendly",
+    "constraints_non_goals": "no social features, no leaderboards, no multiplayer"
+  }
+}

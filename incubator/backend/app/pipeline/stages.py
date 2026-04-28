@@ -10,16 +10,17 @@ from app.config import settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import Run
 from app.schemas.form import ArchitectureBlueprint, FormAnswers, ProductSpec
-from app.services.blueprint_mapper import BlueprintMapper
-from app.services.claude_client import ClaudeClient
-from app.services.scaffolder import ScaffolderService
+from app.services.claude_client import BLUEPRINT_SYSTEM, ClaudeClient
+from app.services.pattern_library import get_patterns_for_file
 from app.services.sse_manager import sse_manager
+from app.services.version_checker import (
+    format_versions_for_prompt,
+    get_mobile_versions,
+    get_python_versions,
+)
 
 claude = ClaudeClient()
-mapper = BlueprintMapper()
-scaffolder = ScaffolderService()
 
-# Optional session override for testing — set via _override_session context manager
 _session_override: ContextVar[AsyncSession | None] = ContextVar("_session_override", default=None)
 
 
@@ -31,6 +32,7 @@ async def _get_session() -> AsyncIterator[AsyncSession]:
     else:
         async with AsyncSessionLocal() as session:
             yield session
+
 
 SPEC_PROMPT = """\
 Generate a ProductSpec JSON for this mobile app.
@@ -57,7 +59,41 @@ Return a JSON object with these exact fields:
   "non_goals": ["string"]
 }}
 
-Keep screens minimal (3-5 max). Prioritise MVP. No nice-to-haves."""
+Keep screens minimal (3-5). Auth always true. Prioritise MVP."""
+
+BLUEPRINT_PROMPT = """\
+Generate an ArchitectureBlueprint JSON for this app.
+
+Product spec:
+{spec_json}
+
+Return a JSON object with these exact fields:
+{{
+  "mobile_framework": "expo",
+  "backend_framework": "fastapi",
+  "selected_modules": ["list of module names"],
+  "file_plan": [
+    {{"path": "relative/path/from/app/root.tsx", "description": "what this file does"}}
+  ],
+  "api_routes": [
+    {{"method": "GET|POST|PUT|DELETE", "path": "/api/...", "description": "..."}}
+  ],
+  "db_entities": ["EntityName"],
+  "env_vars": [
+    {{"key": "VAR_NAME", "example_value": "...", "description": "..."}}
+  ]
+}}
+
+File plan rules:
+- Mobile files: start with "apps/mobile/"
+- Backend files: start with "backend/"
+- Always include: apps/mobile/babel.config.js, apps/mobile/metro.config.js, apps/mobile/package.json, apps/mobile/app.json, apps/mobile/tsconfig.json
+- Always include: apps/mobile/app/_layout.tsx, apps/mobile/app/(tabs)/_layout.tsx, apps/mobile/app/(tabs)/index.tsx, apps/mobile/app/(tabs)/settings.tsx
+- Always include auth: apps/mobile/app/(auth)/login.tsx, apps/mobile/app/(auth)/signup.tsx
+- Always include: apps/mobile/lib/storage/session.tsx, apps/mobile/lib/api/client.ts
+- Always include: backend/app/main.py, backend/app/db/database.py, backend/app/models/user.py, backend/app/auth/router.py, backend/app/auth/service.py, backend/app/core/security.py, backend/pyproject.toml, backend/.env.example
+- Add app-specific screens and backend resources based on the spec
+- DB entities always includes User"""
 
 
 async def _update_run(run_id: str, **fields) -> None:
@@ -71,10 +107,11 @@ async def _update_run(run_id: str, **fields) -> None:
         await session.commit()
 
 
+# ── Stage 1: Spec Generation ──────────────────────────────────────────────────
+
 async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnswers) -> None:
-    """Stage 1: Call Claude to generate ProductSpec. Saves to DB, sets awaiting_spec_review."""
     await _update_run(run_id, status="generating_spec")
-    await sse_manager.emit(run_id, "spec_generation", "Generating product spec...")
+    await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
     try:
         prompt = SPEC_PROMPT.format(
             raw_idea=raw_idea,
@@ -94,109 +131,199 @@ async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnsw
         try:
             await _update_run(run_id, status="failed", error_summary=str(e))
         except Exception:
-            pass  # best-effort; don't suppress original or block emit_done
+            pass
         await sse_manager.emit_done(run_id, "failed")
         raise
 
 
+# ── Stage 2: Blueprint Generation ─────────────────────────────────────────────
+
 async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
-    """Stage 2: Map spec to ArchitectureBlueprint. Saves to DB, sets awaiting_blueprint_review."""
     await _update_run(run_id, status="generating_blueprint")
-    await sse_manager.emit(run_id, "blueprint_generation", "Building architecture blueprint...")
+    await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
     try:
-        blueprint = mapper.map(spec)
+        prompt = BLUEPRINT_PROMPT.format(spec_json=spec.model_dump_json(indent=2))
+        bp_dict = await claude.generate_json(prompt, model="opus", system=BLUEPRINT_SYSTEM)
+        blueprint = ArchitectureBlueprint.model_validate(bp_dict)
         await sse_manager.emit(
-            run_id,
-            "blueprint_generation",
-            f"Modules: {', '.join(blueprint.selected_modules)}",
+            run_id, "blueprint_generation",
+            f"{len(blueprint.file_plan)} files planned — modules: {', '.join(blueprint.selected_modules)}"
         )
         await _update_run(
             run_id,
             status="awaiting_blueprint_review",
             blueprint_json=blueprint.model_dump_json(),
         )
-        await sse_manager.emit(run_id, "blueprint_generation", "Blueprint ready")
         await sse_manager.emit_done(run_id, "awaiting_blueprint_review")
     except Exception as e:
         try:
             await _update_run(run_id, status="failed", error_summary=str(e))
         except Exception:
-            pass  # best-effort; don't suppress original or block emit_done
+            pass
         await sse_manager.emit_done(run_id, "failed")
         raise
 
 
-async def run_shell_scaffolding(
-    run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
-) -> None:
-    """Stage 3: Scaffold mobile-only shell with placeholder data. Sets awaiting_shell_review."""
-    await _update_run(run_id, status="generating_shell")
-    await sse_manager.emit(run_id, "shell_scaffolding", "Scaffolding frontend shell...")
-    try:
-        shell_plan_items = mapper.shell_file_plan(spec)
-        shell_blueprint = ArchitectureBlueprint(
-            mobile_framework=blueprint.mobile_framework,
-            backend_framework=blueprint.backend_framework,
-            selected_modules=blueprint.selected_modules,
-            file_plan=shell_plan_items,
-            api_routes=[],
-            db_entities=blueprint.db_entities,
-            env_vars=blueprint.env_vars,
-        )
-        context_extra = {"shell_mode": True}
-        output_dir = settings.generated_apps_path / run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+# ── Stage 3: Version Check ─────────────────────────────────────────────────────
 
-        written = scaffolder.scaffold(
-            spec, shell_blueprint, output_dir, extra_context=context_extra
-        )
-        await sse_manager.emit(run_id, "shell_scaffolding", f"Wrote {len(written)} files")
-        await _update_run(
-            run_id,
-            status="awaiting_shell_review",
-            stage_logs_json=json.dumps([{"stage": "shell_scaffolding", "files": len(written)}]),
-        )
-        await sse_manager.emit_done(run_id, "awaiting_shell_review")
+async def run_version_check(run_id: str) -> tuple[dict, dict]:
+    await sse_manager.emit(run_id, "version_check", "Checking live library versions...")
+    try:
+        mobile_v, python_v = await get_mobile_versions(), await get_python_versions()
+        await sse_manager.emit(run_id, "version_check", f"Versions verified: expo {mobile_v.get('expo', '?')}, fastapi {python_v.get('fastapi', '?')}")
+        return mobile_v, python_v
     except Exception as e:
-        try:
-            await _update_run(run_id, status="failed", error_summary=str(e))
-        except Exception:
-            pass  # best-effort; don't suppress original or block emit_done
-        await sse_manager.emit_done(run_id, "failed")
-        raise
+        await sse_manager.emit(run_id, "version_check", f"Version check failed, using pinned defaults: {e}")
+        return {}, {}
 
 
-async def run_full_scaffolding(
+# ── Stage 4: File Generation (Agentic) ────────────────────────────────────────
+
+def _build_file_prompt(
+    file_path: str,
+    file_description: str,
+    spec: ProductSpec,
+    blueprint: ArchitectureBlueprint,
+    version_block: str,
+    already_generated: list[str],
+) -> str:
+    patterns = get_patterns_for_file(file_path)
+    generated_list = "\n".join(f"  - {p}" for p in already_generated) if already_generated else "  (none yet)"
+
+    return f"""Generate the file: `{file_path}`
+
+Purpose: {file_description or 'See context below'}
+
+## App Context
+- Name: {spec.app_name}
+- Slug: {spec.app_slug}
+- Goal: {spec.goal}
+- Target user: {spec.target_user}
+- Screens: {', '.join(s.name for s in spec.screens)}
+- Data entities: {', '.join(e.name for e in spec.data_entities)}
+- Features: {', '.join(spec.features)}
+- Auth required: {spec.auth_required}
+- Payments placeholder: {spec.payments_placeholder}
+- Style notes: {spec.style_notes}
+
+## Architecture
+- Selected modules: {', '.join(blueprint.selected_modules)}
+- DB entities: {', '.join(blueprint.db_entities)}
+- API routes: {', '.join(f"{r.method} {r.path}" for r in blueprint.api_routes)}
+
+{version_block}
+
+## Already Generated Files
+{generated_list}
+
+## Relevant Patterns
+{patterns}
+
+Generate the complete file content for `{file_path}`. Raw content only, no explanation."""
+
+
+async def run_file_generation(
     run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
 ) -> None:
-    """Stage 4: Scaffold complete app (frontend + backend). Sets done."""
     await _update_run(run_id, status="building_full")
-    await sse_manager.emit(run_id, "full_scaffolding", "Building full app...")
+    await sse_manager.emit(run_id, "file_generation", "Starting agentic file generation...")
+
     try:
+        mobile_v, python_v = await run_version_check(run_id)
+        version_block = format_versions_for_prompt(mobile_v, python_v)
+
         output_dir = settings.generated_apps_path / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        written = scaffolder.scaffold(spec, blueprint, output_dir)
-        await sse_manager.emit(run_id, "full_scaffolding", f"Wrote {len(written)} files")
+        already_generated: list[str] = []
+        total = len(blueprint.file_plan)
 
+        for i, file_plan in enumerate(blueprint.file_plan, 1):
+            await sse_manager.emit(
+                run_id, "file_generation",
+                f"[{i}/{total}] Generating {file_plan.path}..."
+            )
+
+            prompt = _build_file_prompt(
+                file_plan.path,
+                file_plan.description,
+                spec,
+                blueprint,
+                version_block,
+                already_generated,
+            )
+
+            content = await claude.generate_file(prompt)
+
+            dest = output_dir / file_plan.path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+            already_generated.append(file_plan.path)
+
+        # Write incubator artifacts
         incubator_dir = output_dir / "incubator"
         incubator_dir.mkdir(exist_ok=True)
         (incubator_dir / "product_spec.json").write_text(spec.model_dump_json(indent=2))
-        (incubator_dir / "architecture_blueprint.json").write_text(
-            blueprint.model_dump_json(indent=2)
-        )
+        (incubator_dir / "architecture_blueprint.json").write_text(blueprint.model_dump_json(indent=2))
 
         await _update_run(
             run_id,
             status="done",
-            stage_logs_json=json.dumps([{"stage": "full_scaffolding", "files": len(written)}]),
+            stage_logs_json=json.dumps([{"stage": "file_generation", "files": len(already_generated)}]),
         )
-        await sse_manager.emit(run_id, "full_scaffolding", "App generated successfully")
+        await sse_manager.emit(run_id, "file_generation", f"Done — {len(already_generated)} files generated")
         await sse_manager.emit_done(run_id, "done")
+
     except Exception as e:
         try:
             await _update_run(run_id, status="failed", error_summary=str(e))
         except Exception:
-            pass  # best-effort; don't suppress original or block emit_done
+            pass
+        await sse_manager.emit_done(run_id, "failed")
+        raise
+
+
+# ── Stage 3 alt: Shell (mobile-only preview) ──────────────────────────────────
+
+async def run_shell_scaffolding(
+    run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
+) -> None:
+    """Generate mobile-only files for quick preview before full build."""
+    await _update_run(run_id, status="generating_shell")
+    await sse_manager.emit(run_id, "shell_scaffolding", "Generating mobile shell preview...")
+
+    try:
+        mobile_v, _ = await run_version_check(run_id)
+        version_block = format_versions_for_prompt(mobile_v, {})
+
+        mobile_files = [f for f in blueprint.file_plan if f.path.startswith("apps/mobile")]
+        output_dir = settings.generated_apps_path / run_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        already_generated: list[str] = []
+        for i, file_plan in enumerate(mobile_files, 1):
+            await sse_manager.emit(
+                run_id, "shell_scaffolding",
+                f"[{i}/{len(mobile_files)}] {file_plan.path}"
+            )
+            prompt = _build_file_prompt(
+                file_plan.path, file_plan.description, spec, blueprint,
+                version_block, already_generated
+            )
+            content = await claude.generate_file(prompt)
+            dest = output_dir / file_plan.path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+            already_generated.append(file_plan.path)
+
+        await _update_run(run_id, status="awaiting_shell_review")
+        await sse_manager.emit(run_id, "shell_scaffolding", f"Shell ready — {len(already_generated)} mobile files")
+        await sse_manager.emit_done(run_id, "awaiting_shell_review")
+
+    except Exception as e:
+        try:
+            await _update_run(run_id, status="failed", error_summary=str(e))
+        except Exception:
+            pass
         await sse_manager.emit_done(run_id, "failed")
         raise

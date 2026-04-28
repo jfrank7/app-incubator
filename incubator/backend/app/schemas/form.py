@@ -28,8 +28,7 @@ class EnvVar(BaseModel):
 
 class FilePlan(BaseModel):
     path: str
-    template: str
-    context_keys: list[str]
+    description: str = ""  # what this file does — used by file generator agent
 
 
 class FormAnswers(BaseModel):

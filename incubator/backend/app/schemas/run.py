@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.schemas.form import ArchitectureBlueprint, FormAnswers, ProductSpec
+from app.schemas.form import FormAnswers
 
 
 class CreateRunRequest(BaseModel):
@@ -17,6 +17,9 @@ class RunResponse(BaseModel):
     app_name: str | None
     created_at: datetime
     updated_at: datetime
+    product_spec_json: str | None = None
+    blueprint_json: str | None = None
+    error_summary: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -31,12 +34,12 @@ class RunListItem(BaseModel):
 
 
 class ApproveSpecRequest(BaseModel):
-    spec: ProductSpec
+    pass  # spec already stored in DB; approval triggers next stage
 
 
 class ApproveBlueprintRequest(BaseModel):
-    blueprint: ArchitectureBlueprint
+    pass  # blueprint already stored in DB; approval triggers next stage
 
 
 class ApproveShellRequest(BaseModel):
-    pass  # no body needed — approval is the action
+    pass

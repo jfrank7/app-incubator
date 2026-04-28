@@ -32,5 +32,5 @@ export const api = {
     request<Run>(`/runs/${id}/approve-shell`, { method: 'POST', body: JSON.stringify({}) }),
 
   getArtifacts: (id: string) =>
-    request<{ product_spec: unknown; blueprint: unknown; stage_logs: unknown[] }>(`/runs/${id}/artifacts`),
+    request<{ product_spec: unknown; blueprint: unknown; stage_logs: unknown[]; files: string[] }>(`/runs/${id}/artifacts`),
 }

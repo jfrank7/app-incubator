@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.database import get_session
 from app.db.models import Run
 from app.schemas.form import ArchitectureBlueprint, ProductSpec
@@ -39,7 +40,6 @@ async def create_run(body: CreateRunRequest, session: AsyncSession = Depends(get
 
     async def _kick_spec():
         from app.pipeline.stages import run_spec_generation
-
         await run_spec_generation(run_id, body.raw_idea, body.form_answers)
 
     asyncio.create_task(_kick_spec())
@@ -53,22 +53,18 @@ async def approve_spec(
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     if run.status != "awaiting_spec_review":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Run is in status '{run.status}', expected 'awaiting_spec_review'",
-        )
+        raise HTTPException(409, f"Run is '{run.status}', expected 'awaiting_spec_review'")
+    if not run.product_spec_json:
+        raise HTTPException(422, "No product spec stored on run")
 
-    run.product_spec_json = body.spec.model_dump_json()
-    run.app_name = body.spec.app_name
-    await session.commit()
+    spec = ProductSpec.model_validate_json(run.product_spec_json)
     await session.refresh(run)
 
     async def _kick_blueprint():
         from app.pipeline.stages import run_blueprint_generation
-
-        await run_blueprint_generation(run_id, body.spec)
+        await run_blueprint_generation(run_id, spec)
 
     asyncio.create_task(_kick_blueprint())
     return run
@@ -81,25 +77,19 @@ async def approve_blueprint(
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     if run.status != "awaiting_blueprint_review":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Run is in status '{run.status}', expected 'awaiting_blueprint_review'",
-        )
-    if not run.product_spec_json:
-        raise HTTPException(status_code=422, detail="No product spec found on run")
-
-    run.blueprint_json = body.blueprint.model_dump_json()
-    await session.commit()
-    await session.refresh(run)
+        raise HTTPException(409, f"Run is '{run.status}', expected 'awaiting_blueprint_review'")
+    if not run.product_spec_json or not run.blueprint_json:
+        raise HTTPException(422, "Missing spec or blueprint on run")
 
     spec = ProductSpec.model_validate_json(run.product_spec_json)
+    blueprint = ArchitectureBlueprint.model_validate_json(run.blueprint_json)
+    await session.refresh(run)
 
     async def _kick_shell():
         from app.pipeline.stages import run_shell_scaffolding
-
-        await run_shell_scaffolding(run_id, spec, body.blueprint)
+        await run_shell_scaffolding(run_id, spec, blueprint)
 
     asyncio.create_task(_kick_shell())
     return run
@@ -112,25 +102,21 @@ async def approve_shell(
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     if run.status != "awaiting_shell_review":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Run is in status '{run.status}', expected 'awaiting_shell_review'",
-        )
+        raise HTTPException(409, f"Run is '{run.status}', expected 'awaiting_shell_review'")
     if not run.product_spec_json or not run.blueprint_json:
-        raise HTTPException(status_code=422, detail="Missing spec or blueprint")
+        raise HTTPException(422, "Missing spec or blueprint")
 
     spec = ProductSpec.model_validate_json(run.product_spec_json)
     blueprint = ArchitectureBlueprint.model_validate_json(run.blueprint_json)
+    await session.refresh(run)
 
     async def _kick_full():
-        from app.pipeline.stages import run_full_scaffolding
-
-        await run_full_scaffolding(run_id, spec, blueprint)
+        from app.pipeline.stages import run_file_generation
+        await run_file_generation(run_id, spec, blueprint)
 
     asyncio.create_task(_kick_full())
-    await session.refresh(run)
     return run
 
 
@@ -145,7 +131,7 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
     return run
 
 
@@ -159,7 +145,7 @@ async def stream_run(run_id: str):
                 try:
                     data = await asyncio.wait_for(q.get(), timeout=30.0)
                 except asyncio.TimeoutError:
-                    yield f"data: {json.dumps({'stage': 'heartbeat', 'message': 'ping'})}\n\n"
+                    yield "data: heartbeat ping\n\n"
                     continue
                 if data is None:
                     break
@@ -175,9 +161,19 @@ async def get_artifacts(run_id: str, session: AsyncSession = Depends(get_session
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(404, "Run not found")
+
+    # Collect generated file paths from disk
+    run_dir = settings.generated_apps_path / run_id
+    files: list[str] = []
+    if run_dir.exists():
+        for f in sorted(run_dir.rglob("*")):
+            if f.is_file() and ".DS_Store" not in str(f):
+                files.append(str(f.relative_to(run_dir)))
+
     return {
         "product_spec": json.loads(run.product_spec_json) if run.product_spec_json else None,
         "blueprint": json.loads(run.blueprint_json) if run.blueprint_json else None,
         "stage_logs": json.loads(run.stage_logs_json) if run.stage_logs_json else [],
+        "files": files,
     }

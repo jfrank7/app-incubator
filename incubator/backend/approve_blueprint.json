@@ -1,0 +1,151 @@
+{
+  "blueprint": {
+    "mobile_framework": "expo",
+    "backend_framework": "fastapi",
+    "selected_modules": [
+      "auth",
+      "dashboard",
+      "local_persistence",
+      "analytics_hook"
+    ],
+    "file_plan": [
+      {
+        "path": "apps/mobile/package.json",
+        "template": "mobile/base/package.json.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app.json",
+        "template": "mobile/base/app.json.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/tsconfig.json",
+        "template": "mobile/base/tsconfig.json.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app/_layout.tsx",
+        "template": "mobile/base/app/_layout.tsx.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app/(tabs)/_layout.tsx",
+        "template": "mobile/base/app/(tabs)/_layout.tsx.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app/(tabs)/index.tsx",
+        "template": "mobile/base/app/(tabs)/index.tsx.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/lib/api/client.ts",
+        "template": "mobile/base/lib/api/client.ts.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/lib/storage/session.ts",
+        "template": "mobile/base/lib/storage/session.ts.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/lib/telemetry/analytics.ts",
+        "template": "mobile/base/lib/telemetry/analytics.ts.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app/(auth)/login.tsx",
+        "template": "mobile/base/app/(auth)/login.tsx.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/app/(auth)/signup.tsx",
+        "template": "mobile/base/app/(auth)/signup.tsx.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/main.py",
+        "template": "backend/base/app/main.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/core/security.py",
+        "template": "backend/base/app/core/security.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/db/database.py",
+        "template": "backend/base/app/db/database.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/models/user.py",
+        "template": "backend/base/app/models/user.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/schemas/auth.py",
+        "template": "backend/base/app/schemas/auth.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/auth/service.py",
+        "template": "backend/base/app/auth/service.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/app/auth/router.py",
+        "template": "backend/base/app/auth/router.py.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/pyproject.toml",
+        "template": "backend/base/pyproject.toml.j2",
+        "context_keys": []
+      },
+      {
+        "path": "backend/.env.example",
+        "template": "backend/base/.env.example.j2",
+        "context_keys": []
+      },
+      {
+        "path": "README.md",
+        "template": "backend/base/README.md.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/lib/db/local.ts",
+        "template": "mobile/base/lib/db/local.ts.j2",
+        "context_keys": []
+      },
+      {
+        "path": "apps/mobile/lib/telemetry/analytics.ts",
+        "template": "mobile/base/lib/telemetry/analytics.ts.j2",
+        "context_keys": []
+      }
+    ],
+    "api_routes": [],
+    "db_entities": [
+      "User",
+      "ReflexResult"
+    ],
+    "env_vars": [
+      {
+        "key": "DATABASE_URL",
+        "example_value": "sqlite+aiosqlite:///./app.db",
+        "description": "DB path"
+      },
+      {
+        "key": "SECRET_KEY",
+        "example_value": "change-me-in-production",
+        "description": "JWT secret"
+      },
+      {
+        "key": "EXPO_PUBLIC_API_URL",
+        "example_value": "http://localhost:8000",
+        "description": "Backend URL"
+      }
+    ]
+  }
+}
