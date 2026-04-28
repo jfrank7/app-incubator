@@ -7,3 +7,8 @@ node_modules/
 dist/
 .venv/
 *.egg-info/
+.DS_Store
+
+# Local-only Claude dev context (not for repo)
+CLAUDE.md
+.claude/

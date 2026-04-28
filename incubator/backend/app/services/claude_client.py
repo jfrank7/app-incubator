@@ -54,12 +54,12 @@ class ClaudeClient:
         text = re.sub(r"\s*```$", "", text)
         return json.loads(text.strip())
 
-    async def generate_file(self, prompt: str) -> str:
+    async def generate_file(self, prompt: str, system: str | None = None) -> str:
         """Generate a source file. Returns raw file content."""
         response = await self._client.messages.create(
             model=SONNET_MODEL,
             max_tokens=8192,
-            system=FILE_GEN_SYSTEM,
+            system=system or FILE_GEN_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()

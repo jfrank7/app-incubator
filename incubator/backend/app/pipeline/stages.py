@@ -10,7 +10,8 @@ from app.config import settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import Run
 from app.schemas.form import ArchitectureBlueprint, FormAnswers, ProductSpec
-from app.services.claude_client import BLUEPRINT_SYSTEM, ClaudeClient
+from app.services.agent_loader import load_agent_instructions
+from app.services.claude_client import ClaudeClient
 from app.services.pattern_library import get_patterns_for_file
 from app.services.sse_manager import sse_manager
 from app.services.version_checker import (
@@ -18,6 +19,7 @@ from app.services.version_checker import (
     get_mobile_versions,
     get_python_versions,
 )
+from app.services.workspace import workspace
 
 claude = ClaudeClient()
 
@@ -35,6 +37,11 @@ async def _get_session() -> AsyncIterator[AsyncSession]:
 
 
 SPEC_PROMPT = """\
+## Workspace context (from previous agents)
+{workspace_context}
+
+---
+
 Generate a ProductSpec JSON for this mobile app.
 
 Raw idea: {raw_idea}
@@ -62,6 +69,11 @@ Return a JSON object with these exact fields:
 Keep screens minimal (3-5). Auth always true. Prioritise MVP."""
 
 BLUEPRINT_PROMPT = """\
+## Workspace context (from previous agents)
+{workspace_context}
+
+---
+
 Generate an ArchitectureBlueprint JSON for this app.
 
 Product spec:
@@ -110,15 +122,32 @@ async def _update_run(run_id: str, **fields) -> None:
 # ── Stage 1: Spec Generation ──────────────────────────────────────────────────
 
 async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnswers) -> None:
+    workspace.init_index(run_id)
     await _update_run(run_id, status="generating_spec")
     await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
     try:
+        ctx = workspace.read_index(run_id)
+        system = load_agent_instructions("spec-agent.md")
         prompt = SPEC_PROMPT.format(
             raw_idea=raw_idea,
             form_json=form_answers.model_dump_json(indent=2),
+            workspace_context=ctx,
         )
-        spec_dict = await claude.generate_json(prompt, model="opus")
+        spec_dict = await claude.generate_json(prompt, model="opus", system=system)
         spec = ProductSpec.model_validate(spec_dict)
+
+        workspace.write_artifact(run_id, "spec.json", spec.model_dump())
+        workspace.update_index(
+            run_id,
+            agent="spec-agent",
+            summary=f"Generated spec: '{spec.app_name}' — {spec.goal}",
+            decisions=[
+                f"App name: {spec.app_name}",
+                f"Screens: {', '.join(s.name for s in spec.screens)}",
+                f"Entities: {', '.join(e.name for e in spec.data_entities)}",
+                f"Auth: {spec.auth_required}, Payments: {spec.payments_placeholder}",
+            ],
+        )
         await _update_run(
             run_id,
             status="awaiting_spec_review",
@@ -142,12 +171,29 @@ async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
     await _update_run(run_id, status="generating_blueprint")
     await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
     try:
-        prompt = BLUEPRINT_PROMPT.format(spec_json=spec.model_dump_json(indent=2))
-        bp_dict = await claude.generate_json(prompt, model="opus", system=BLUEPRINT_SYSTEM)
+        ctx = workspace.read_index(run_id)
+        system = load_agent_instructions("blueprint-agent.md")
+        prompt = BLUEPRINT_PROMPT.format(
+            spec_json=spec.model_dump_json(indent=2),
+            workspace_context=ctx,
+        )
+        bp_dict = await claude.generate_json(prompt, model="opus", system=system)
         blueprint = ArchitectureBlueprint.model_validate(bp_dict)
+
+        workspace.write_artifact(run_id, "blueprint.json", blueprint.model_dump())
+        workspace.update_index(
+            run_id,
+            agent="blueprint-agent",
+            summary=f"{len(blueprint.file_plan)} files planned, {len(blueprint.api_routes)} API routes",
+            decisions=[
+                f"Modules: {', '.join(blueprint.selected_modules)}",
+                f"DB entities: {', '.join(blueprint.db_entities)}",
+                f"API routes: {', '.join(f'{r.method} {r.path}' for r in blueprint.api_routes[:5])}",
+            ],
+        )
         await sse_manager.emit(
             run_id, "blueprint_generation",
-            f"{len(blueprint.file_plan)} files planned — modules: {', '.join(blueprint.selected_modules)}"
+            f"{len(blueprint.file_plan)} files planned — modules: {', '.join(blueprint.selected_modules)}"  # noqa: E501
         )
         await _update_run(
             run_id,
@@ -170,10 +216,20 @@ async def run_version_check(run_id: str) -> tuple[dict, dict]:
     await sse_manager.emit(run_id, "version_check", "Checking live library versions...")
     try:
         mobile_v, python_v = await get_mobile_versions(), await get_python_versions()
-        await sse_manager.emit(run_id, "version_check", f"Versions verified: expo {mobile_v.get('expo', '?')}, fastapi {python_v.get('fastapi', '?')}")
+        versions_artifact = {"mobile": mobile_v, "python": python_v}
+        workspace.write_artifact(run_id, "versions.json", versions_artifact)
+        workspace.update_index(
+            run_id,
+            agent="version-checker",
+            summary=f"Verified: expo {mobile_v.get('expo', '?')}, fastapi {python_v.get('fastapi', '?')}",
+        )
+        await sse_manager.emit(  # noqa: E501
+            run_id, "version_check",
+            f"Versions verified: expo {mobile_v.get('expo', '?')}, fastapi {python_v.get('fastapi', '?')}"
+        )
         return mobile_v, python_v
     except Exception as e:
-        await sse_manager.emit(run_id, "version_check", f"Version check failed, using pinned defaults: {e}")
+        await sse_manager.emit(run_id, "version_check", f"Version check failed, using pinned defaults: {e}")  # noqa: E501
         return {}, {}
 
 
@@ -186,11 +242,17 @@ def _build_file_prompt(
     blueprint: ArchitectureBlueprint,
     version_block: str,
     already_generated: list[str],
+    workspace_context: str = "",
 ) -> str:
     patterns = get_patterns_for_file(file_path)
-    generated_list = "\n".join(f"  - {p}" for p in already_generated) if already_generated else "  (none yet)"
+    generated_list = "\n".join(f"  - {p}" for p in already_generated) if already_generated else "  (none yet)"  # noqa: E501
 
-    return f"""Generate the file: `{file_path}`
+    return f"""## Workspace context (decisions from previous agents)
+{workspace_context}
+
+---
+
+Generate the file: `{file_path}`
 
 Purpose: {file_description or 'See context below'}
 
@@ -231,6 +293,7 @@ async def run_file_generation(
     try:
         mobile_v, python_v = await run_version_check(run_id)
         version_block = format_versions_for_prompt(mobile_v, python_v)
+        file_gen_system = load_agent_instructions("file-generator.md")
 
         output_dir = settings.generated_apps_path / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -243,7 +306,7 @@ async def run_file_generation(
                 run_id, "file_generation",
                 f"[{i}/{total}] Generating {file_plan.path}..."
             )
-
+            ctx = workspace.read_index(run_id)
             prompt = _build_file_prompt(
                 file_plan.path,
                 file_plan.description,
@@ -251,14 +314,16 @@ async def run_file_generation(
                 blueprint,
                 version_block,
                 already_generated,
+                workspace_context=ctx,
             )
 
-            content = await claude.generate_file(prompt)
+            content = await claude.generate_file(prompt, system=file_gen_system)
 
             dest = output_dir / file_plan.path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content)
             already_generated.append(file_plan.path)
+            workspace.register_file(run_id, file_plan.path, status="generated")
 
         # Write incubator artifacts
         incubator_dir = output_dir / "incubator"
@@ -266,12 +331,17 @@ async def run_file_generation(
         (incubator_dir / "product_spec.json").write_text(spec.model_dump_json(indent=2))
         (incubator_dir / "architecture_blueprint.json").write_text(blueprint.model_dump_json(indent=2))
 
+        workspace.update_index(
+            run_id, agent="file-generator",
+            summary=f"Full generation complete: {len(already_generated)} files",
+            files_written=already_generated,
+        )
         await _update_run(
             run_id,
             status="done",
-            stage_logs_json=json.dumps([{"stage": "file_generation", "files": len(already_generated)}]),
+            stage_logs_json=json.dumps([{"stage": "file_generation", "files": len(already_generated)}]),  # noqa: E501
         )
-        await sse_manager.emit(run_id, "file_generation", f"Done — {len(already_generated)} files generated")
+        await sse_manager.emit(run_id, "file_generation", f"Done — {len(already_generated)} files generated")  # noqa: E501
         await sse_manager.emit_done(run_id, "done")
 
     except Exception as e:
@@ -295,6 +365,7 @@ async def run_shell_scaffolding(
     try:
         mobile_v, _ = await run_version_check(run_id)
         version_block = format_versions_for_prompt(mobile_v, {})
+        file_gen_system = load_agent_instructions("file-generator.md")
 
         mobile_files = [f for f in blueprint.file_plan if f.path.startswith("apps/mobile")]
         output_dir = settings.generated_apps_path / run_id
@@ -306,18 +377,28 @@ async def run_shell_scaffolding(
                 run_id, "shell_scaffolding",
                 f"[{i}/{len(mobile_files)}] {file_plan.path}"
             )
+            ctx = workspace.read_index(run_id)
             prompt = _build_file_prompt(
                 file_plan.path, file_plan.description, spec, blueprint,
-                version_block, already_generated
+                version_block, already_generated, workspace_context=ctx
             )
-            content = await claude.generate_file(prompt)
+            content = await claude.generate_file(prompt, system=file_gen_system)
             dest = output_dir / file_plan.path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content)
             already_generated.append(file_plan.path)
+            workspace.register_file(run_id, file_plan.path, status="shell-generated")
 
+        workspace.update_index(
+            run_id, agent="file-generator (shell)",
+            summary=f"Shell: {len(already_generated)} mobile files generated",
+            files_written=already_generated,
+        )
         await _update_run(run_id, status="awaiting_shell_review")
-        await sse_manager.emit(run_id, "shell_scaffolding", f"Shell ready — {len(already_generated)} mobile files")
+        await sse_manager.emit(  # noqa: E501
+            run_id, "shell_scaffolding",
+            f"Shell ready — {len(already_generated)} mobile files"
+        )
         await sse_manager.emit_done(run_id, "awaiting_shell_review")
 
     except Exception as e:
