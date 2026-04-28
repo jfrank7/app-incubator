@@ -8,7 +8,7 @@ MOBILE_BASE_FILES: list[tuple[str, str]] = [
     ("apps/mobile/app/(tabs)/_layout.tsx", "mobile/base/app/(tabs)/_layout.tsx.j2"),
     ("apps/mobile/app/(tabs)/index.tsx", "mobile/base/app/(tabs)/index.tsx.j2"),
     ("apps/mobile/lib/api/client.ts", "mobile/base/lib/api/client.ts.j2"),
-    ("apps/mobile/lib/storage/session.ts", "mobile/base/lib/storage/session.ts.j2"),
+    ("apps/mobile/lib/storage/session.tsx", "mobile/base/lib/storage/session.tsx.j2"),
     ("apps/mobile/lib/telemetry/analytics.ts", "mobile/base/lib/telemetry/analytics.ts.j2"),
 ]
 
