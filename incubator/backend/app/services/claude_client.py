@@ -2,6 +2,7 @@ import json
 import re
 
 from anthropic import AsyncAnthropic
+from langfuse import get_client, observe
 
 from app.config import settings
 
@@ -30,6 +31,7 @@ class ClaudeClient:
     def __init__(self) -> None:
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+    @observe(as_type="generation", name="generate_spec")
     async def generate_spec(self, prompt: str, context: str = "", model: str = "opus") -> str:
         model_id = OPUS_MODEL if model == "opus" else SONNET_MODEL
         response = await self._client.messages.create(
@@ -38,8 +40,16 @@ class ClaudeClient:
             system=SPEC_SYSTEM,
             messages=[{"role": "user", "content": f"{context}\n\n{prompt}".strip()}],
         )
+        get_client().update_current_generation(
+            model=model_id,
+            usage_details={
+                "input": response.usage.input_tokens,
+                "output": response.usage.output_tokens,
+            },
+        )
         return response.content[0].text
 
+    @observe(as_type="generation", name="generate_json")
     async def generate_json(self, prompt: str, model: str = "opus", system: str | None = None) -> dict:
         model_id = OPUS_MODEL if model == "opus" else SONNET_MODEL
         sys = system or SPEC_SYSTEM
@@ -49,11 +59,19 @@ class ClaudeClient:
             system=sys,
             messages=[{"role": "user", "content": prompt}],
         )
+        get_client().update_current_generation(
+            model=model_id,
+            usage_details={
+                "input": response.usage.input_tokens,
+                "output": response.usage.output_tokens,
+            },
+        )
         text = response.content[0].text.strip()
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
         return json.loads(text.strip())
 
+    @observe(as_type="generation", name="generate_file")
     async def generate_file(self, prompt: str, system: str | None = None) -> str:
         """Generate a source file. Returns raw file content."""
         response = await self._client.messages.create(
@@ -62,8 +80,14 @@ class ClaudeClient:
             system=system or FILE_GEN_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
+        get_client().update_current_generation(
+            model=SONNET_MODEL,
+            usage_details={
+                "input": response.usage.input_tokens,
+                "output": response.usage.output_tokens,
+            },
+        )
         text = response.content[0].text.strip()
-        # Strip any accidental markdown fences
         text = re.sub(r"^```\w*\s*\n?", "", text)
         text = re.sub(r"\n?```\s*$", "", text)
         return text
