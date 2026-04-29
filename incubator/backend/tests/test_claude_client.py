@@ -24,11 +24,16 @@ async def test_generate_spec_calls_opus(client):
     mock_response = _make_mock_response('{"app_name": "Test"}')
 
     with patch.object(client._client, "messages") as mock_msgs:
-        mock_msgs.create = AsyncMock(return_value=mock_response)
-        await client.generate_spec("build a tracker", "{}")
+        with patch("app.services.claude_client.get_client") as mock_get_client:
+            mock_msgs.create = AsyncMock(return_value=mock_response)
+            await client.generate_spec("build a tracker", "{}")
 
     mock_msgs.create.assert_called_once()
     assert mock_msgs.create.call_args.kwargs["model"] == "claude-opus-4-7"
+    mock_get_client.return_value.update_current_generation.assert_called_once_with(
+        model="claude-opus-4-7",
+        usage_details={"input_tokens": 100, "output_tokens": 50},
+    )
 
 
 @pytest.mark.asyncio

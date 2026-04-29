@@ -43,27 +43,29 @@ class ClaudeClient:
         get_client().update_current_generation(
             model=model_id,
             usage_details={
-                "input": response.usage.input_tokens,
-                "output": response.usage.output_tokens,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
             },
         )
         return response.content[0].text
 
     @observe(as_type="generation", name="generate_json")
-    async def generate_json(self, prompt: str, model: str = "opus", system: str | None = None) -> dict:
+    async def generate_json(
+        self, prompt: str, model: str = "opus", system: str | None = None
+    ) -> dict:
         model_id = OPUS_MODEL if model == "opus" else SONNET_MODEL
-        sys = system or SPEC_SYSTEM
+        system_prompt = system or SPEC_SYSTEM
         response = await self._client.messages.create(
             model=model_id,
             max_tokens=8192,
-            system=sys,
+            system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
         get_client().update_current_generation(
             model=model_id,
             usage_details={
-                "input": response.usage.input_tokens,
-                "output": response.usage.output_tokens,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
             },
         )
         text = response.content[0].text.strip()
@@ -83,8 +85,8 @@ class ClaudeClient:
         get_client().update_current_generation(
             model=SONNET_MODEL,
             usage_details={
-                "input": response.usage.input_tokens,
-                "output": response.usage.output_tokens,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
             },
         )
         text = response.content[0].text.strip()
