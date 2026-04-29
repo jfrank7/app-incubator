@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import AsyncIterator
 
+from langfuse import LangfuseOtelSpanAttributes, observe
+from opentelemetry import trace as otel_trace
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,7 +123,9 @@ async def _update_run(run_id: str, **fields) -> None:
 
 # ── Stage 1: Spec Generation ──────────────────────────────────────────────────
 
+@observe(name="spec-generation")
 async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnswers) -> None:
+    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
     workspace.init_index(run_id)
     await _update_run(run_id, status="generating_spec")
     await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
@@ -167,7 +171,9 @@ async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnsw
 
 # ── Stage 2: Blueprint Generation ─────────────────────────────────────────────
 
+@observe(name="blueprint-generation")
 async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
+    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
     await _update_run(run_id, status="generating_blueprint")
     await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
     try:
@@ -284,9 +290,11 @@ Purpose: {file_description or 'See context below'}
 Generate the complete file content for `{file_path}`. Raw content only, no explanation."""
 
 
+@observe(name="file-generation")
 async def run_file_generation(
     run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
 ) -> None:
+    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
     await _update_run(run_id, status="building_full")
     await sse_manager.emit(run_id, "file_generation", "Starting agentic file generation...")
 
@@ -355,10 +363,12 @@ async def run_file_generation(
 
 # ── Stage 3 alt: Shell (mobile-only preview) ──────────────────────────────────
 
+@observe(name="shell-scaffolding")
 async def run_shell_scaffolding(
     run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
 ) -> None:
     """Generate mobile-only files for quick preview before full build."""
+    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
     await _update_run(run_id, status="generating_shell")
     await sse_manager.emit(run_id, "shell_scaffolding", "Generating mobile shell preview...")
 
