@@ -3,8 +3,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import AsyncIterator
 
-from langfuse import LangfuseOtelSpanAttributes, observe
-from opentelemetry import trace as otel_trace
+from langfuse import observe, propagate_attributes
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,95 +124,95 @@ async def _update_run(run_id: str, **fields) -> None:
 
 @observe(name="spec-generation")
 async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnswers) -> None:
-    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
-    workspace.init_index(run_id)
-    await _update_run(run_id, status="generating_spec")
-    await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
-    try:
-        ctx = workspace.read_index(run_id)
-        system = load_agent_instructions("spec-agent.md")
-        prompt = SPEC_PROMPT.format(
-            raw_idea=raw_idea,
-            form_json=form_answers.model_dump_json(indent=2),
-            workspace_context=ctx,
-        )
-        spec_dict = await claude.generate_json(prompt, model="opus", system=system)
-        spec = ProductSpec.model_validate(spec_dict)
-
-        workspace.write_artifact(run_id, "spec.json", spec.model_dump())
-        workspace.update_index(
-            run_id,
-            agent="spec-agent",
-            summary=f"Generated spec: '{spec.app_name}' — {spec.goal}",
-            decisions=[
-                f"App name: {spec.app_name}",
-                f"Screens: {', '.join(s.name for s in spec.screens)}",
-                f"Entities: {', '.join(e.name for e in spec.data_entities)}",
-                f"Auth: {spec.auth_required}, Payments: {spec.payments_placeholder}",
-            ],
-        )
-        await _update_run(
-            run_id,
-            status="awaiting_spec_review",
-            app_name=spec.app_name,
-            product_spec_json=spec.model_dump_json(),
-        )
-        await sse_manager.emit(run_id, "spec_generation", f"Spec ready: {spec.app_name}")
-        await sse_manager.emit_done(run_id, "awaiting_spec_review")
-    except Exception as e:
+    with propagate_attributes(session_id=run_id):
+        workspace.init_index(run_id)
+        await _update_run(run_id, status="generating_spec")
+        await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
         try:
-            await _update_run(run_id, status="failed", error_summary=str(e))
-        except Exception:
-            pass
-        await sse_manager.emit_done(run_id, "failed")
-        raise
+            ctx = workspace.read_index(run_id)
+            system = load_agent_instructions("spec-agent.md")
+            prompt = SPEC_PROMPT.format(
+                raw_idea=raw_idea,
+                form_json=form_answers.model_dump_json(indent=2),
+                workspace_context=ctx,
+            )
+            spec_dict = await claude.generate_json(prompt, model="opus", system=system)
+            spec = ProductSpec.model_validate(spec_dict)
+
+            workspace.write_artifact(run_id, "spec.json", spec.model_dump())
+            workspace.update_index(
+                run_id,
+                agent="spec-agent",
+                summary=f"Generated spec: '{spec.app_name}' — {spec.goal}",
+                decisions=[
+                    f"App name: {spec.app_name}",
+                    f"Screens: {', '.join(s.name for s in spec.screens)}",
+                    f"Entities: {', '.join(e.name for e in spec.data_entities)}",
+                    f"Auth: {spec.auth_required}, Payments: {spec.payments_placeholder}",
+                ],
+            )
+            await _update_run(
+                run_id,
+                status="awaiting_spec_review",
+                app_name=spec.app_name,
+                product_spec_json=spec.model_dump_json(),
+            )
+            await sse_manager.emit(run_id, "spec_generation", f"Spec ready: {spec.app_name}")
+            await sse_manager.emit_done(run_id, "awaiting_spec_review")
+        except Exception as e:
+            try:
+                await _update_run(run_id, status="failed", error_summary=str(e))
+            except Exception:
+                pass
+            await sse_manager.emit_done(run_id, "failed")
+            raise
 
 
 # ── Stage 2: Blueprint Generation ─────────────────────────────────────────────
 
 @observe(name="blueprint-generation")
 async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
-    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
-    await _update_run(run_id, status="generating_blueprint")
-    await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
-    try:
-        ctx = workspace.read_index(run_id)
-        system = load_agent_instructions("blueprint-agent.md")
-        prompt = BLUEPRINT_PROMPT.format(
-            spec_json=spec.model_dump_json(indent=2),
-            workspace_context=ctx,
-        )
-        bp_dict = await claude.generate_json(prompt, model="opus", system=system)
-        blueprint = ArchitectureBlueprint.model_validate(bp_dict)
-
-        workspace.write_artifact(run_id, "blueprint.json", blueprint.model_dump())
-        workspace.update_index(
-            run_id,
-            agent="blueprint-agent",
-            summary=f"{len(blueprint.file_plan)} files planned, {len(blueprint.api_routes)} API routes",
-            decisions=[
-                f"Modules: {', '.join(blueprint.selected_modules)}",
-                f"DB entities: {', '.join(blueprint.db_entities)}",
-                f"API routes: {', '.join(f'{r.method} {r.path}' for r in blueprint.api_routes[:5])}",
-            ],
-        )
-        await sse_manager.emit(
-            run_id, "blueprint_generation",
-            f"{len(blueprint.file_plan)} files planned — modules: {', '.join(blueprint.selected_modules)}"  # noqa: E501
-        )
-        await _update_run(
-            run_id,
-            status="awaiting_blueprint_review",
-            blueprint_json=blueprint.model_dump_json(),
-        )
-        await sse_manager.emit_done(run_id, "awaiting_blueprint_review")
-    except Exception as e:
+    with propagate_attributes(session_id=run_id):
+        await _update_run(run_id, status="generating_blueprint")
+        await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
         try:
-            await _update_run(run_id, status="failed", error_summary=str(e))
-        except Exception:
-            pass
-        await sse_manager.emit_done(run_id, "failed")
-        raise
+            ctx = workspace.read_index(run_id)
+            system = load_agent_instructions("blueprint-agent.md")
+            prompt = BLUEPRINT_PROMPT.format(
+                spec_json=spec.model_dump_json(indent=2),
+                workspace_context=ctx,
+            )
+            bp_dict = await claude.generate_json(prompt, model="opus", system=system)
+            blueprint = ArchitectureBlueprint.model_validate(bp_dict)
+
+            workspace.write_artifact(run_id, "blueprint.json", blueprint.model_dump())
+            workspace.update_index(
+                run_id,
+                agent="blueprint-agent",
+                summary=f"{len(blueprint.file_plan)} files planned, {len(blueprint.api_routes)} API routes",
+                decisions=[
+                    f"Modules: {', '.join(blueprint.selected_modules)}",
+                    f"DB entities: {', '.join(blueprint.db_entities)}",
+                    f"API routes: {', '.join(f'{r.method} {r.path}' for r in blueprint.api_routes[:5])}",
+                ],
+            )
+            await sse_manager.emit(
+                run_id, "blueprint_generation",
+                f"{len(blueprint.file_plan)} files planned — modules: {', '.join(blueprint.selected_modules)}"  # noqa: E501
+            )
+            await _update_run(
+                run_id,
+                status="awaiting_blueprint_review",
+                blueprint_json=blueprint.model_dump_json(),
+            )
+            await sse_manager.emit_done(run_id, "awaiting_blueprint_review")
+        except Exception as e:
+            try:
+                await _update_run(run_id, status="failed", error_summary=str(e))
+            except Exception:
+                pass
+            await sse_manager.emit_done(run_id, "failed")
+            raise
 
 
 # ── Stage 3: Version Check ─────────────────────────────────────────────────────
@@ -294,71 +293,71 @@ Generate the complete file content for `{file_path}`. Raw content only, no expla
 async def run_file_generation(
     run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
 ) -> None:
-    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
-    await _update_run(run_id, status="building_full")
-    await sse_manager.emit(run_id, "file_generation", "Starting agentic file generation...")
+    with propagate_attributes(session_id=run_id):
+        await _update_run(run_id, status="building_full")
+        await sse_manager.emit(run_id, "file_generation", "Starting agentic file generation...")
 
-    try:
-        mobile_v, python_v = await run_version_check(run_id)
-        version_block = format_versions_for_prompt(mobile_v, python_v)
-        file_gen_system = load_agent_instructions("file-generator.md")
-
-        output_dir = settings.generated_apps_path / run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        already_generated: list[str] = []
-        total = len(blueprint.file_plan)
-
-        for i, file_plan in enumerate(blueprint.file_plan, 1):
-            await sse_manager.emit(
-                run_id, "file_generation",
-                f"[{i}/{total}] Generating {file_plan.path}..."
-            )
-            ctx = workspace.read_index(run_id)
-            prompt = _build_file_prompt(
-                file_plan.path,
-                file_plan.description,
-                spec,
-                blueprint,
-                version_block,
-                already_generated,
-                workspace_context=ctx,
-            )
-
-            content = await claude.generate_file(prompt, system=file_gen_system)
-
-            dest = output_dir / file_plan.path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content)
-            already_generated.append(file_plan.path)
-            workspace.register_file(run_id, file_plan.path, status="generated")
-
-        # Write incubator artifacts
-        incubator_dir = output_dir / "incubator"
-        incubator_dir.mkdir(exist_ok=True)
-        (incubator_dir / "product_spec.json").write_text(spec.model_dump_json(indent=2))
-        (incubator_dir / "architecture_blueprint.json").write_text(blueprint.model_dump_json(indent=2))
-
-        workspace.update_index(
-            run_id, agent="file-generator",
-            summary=f"Full generation complete: {len(already_generated)} files",
-            files_written=already_generated,
-        )
-        await _update_run(
-            run_id,
-            status="done",
-            stage_logs_json=json.dumps([{"stage": "file_generation", "files": len(already_generated)}]),  # noqa: E501
-        )
-        await sse_manager.emit(run_id, "file_generation", f"Done — {len(already_generated)} files generated")  # noqa: E501
-        await sse_manager.emit_done(run_id, "done")
-
-    except Exception as e:
         try:
-            await _update_run(run_id, status="failed", error_summary=str(e))
-        except Exception:
-            pass
-        await sse_manager.emit_done(run_id, "failed")
-        raise
+            mobile_v, python_v = await run_version_check(run_id)
+            version_block = format_versions_for_prompt(mobile_v, python_v)
+            file_gen_system = load_agent_instructions("file-generator.md")
+
+            output_dir = settings.generated_apps_path / run_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            already_generated: list[str] = []
+            total = len(blueprint.file_plan)
+
+            for i, file_plan in enumerate(blueprint.file_plan, 1):
+                await sse_manager.emit(
+                    run_id, "file_generation",
+                    f"[{i}/{total}] Generating {file_plan.path}..."
+                )
+                ctx = workspace.read_index(run_id)
+                prompt = _build_file_prompt(
+                    file_plan.path,
+                    file_plan.description,
+                    spec,
+                    blueprint,
+                    version_block,
+                    already_generated,
+                    workspace_context=ctx,
+                )
+
+                content = await claude.generate_file(prompt, system=file_gen_system)
+
+                dest = output_dir / file_plan.path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content)
+                already_generated.append(file_plan.path)
+                workspace.register_file(run_id, file_plan.path, status="generated")
+
+            # Write incubator artifacts
+            incubator_dir = output_dir / "incubator"
+            incubator_dir.mkdir(exist_ok=True)
+            (incubator_dir / "product_spec.json").write_text(spec.model_dump_json(indent=2))
+            (incubator_dir / "architecture_blueprint.json").write_text(blueprint.model_dump_json(indent=2))
+
+            workspace.update_index(
+                run_id, agent="file-generator",
+                summary=f"Full generation complete: {len(already_generated)} files",
+                files_written=already_generated,
+            )
+            await _update_run(
+                run_id,
+                status="done",
+                stage_logs_json=json.dumps([{"stage": "file_generation", "files": len(already_generated)}]),  # noqa: E501
+            )
+            await sse_manager.emit(run_id, "file_generation", f"Done — {len(already_generated)} files generated")  # noqa: E501
+            await sse_manager.emit_done(run_id, "done")
+
+        except Exception as e:
+            try:
+                await _update_run(run_id, status="failed", error_summary=str(e))
+            except Exception:
+                pass
+            await sse_manager.emit_done(run_id, "failed")
+            raise
 
 
 # ── Stage 3 alt: Shell (mobile-only preview) ──────────────────────────────────
@@ -368,53 +367,53 @@ async def run_shell_scaffolding(
     run_id: str, spec: ProductSpec, blueprint: ArchitectureBlueprint
 ) -> None:
     """Generate mobile-only files for quick preview before full build."""
-    otel_trace.get_current_span().set_attribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, run_id)
-    await _update_run(run_id, status="generating_shell")
-    await sse_manager.emit(run_id, "shell_scaffolding", "Generating mobile shell preview...")
+    with propagate_attributes(session_id=run_id):
+        await _update_run(run_id, status="generating_shell")
+        await sse_manager.emit(run_id, "shell_scaffolding", "Generating mobile shell preview...")
 
-    try:
-        mobile_v, _ = await run_version_check(run_id)
-        version_block = format_versions_for_prompt(mobile_v, {})
-        file_gen_system = load_agent_instructions("file-generator.md")
-
-        mobile_files = [f for f in blueprint.file_plan if f.path.startswith("apps/mobile")]
-        output_dir = settings.generated_apps_path / run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        already_generated: list[str] = []
-        for i, file_plan in enumerate(mobile_files, 1):
-            await sse_manager.emit(
-                run_id, "shell_scaffolding",
-                f"[{i}/{len(mobile_files)}] {file_plan.path}"
-            )
-            ctx = workspace.read_index(run_id)
-            prompt = _build_file_prompt(
-                file_plan.path, file_plan.description, spec, blueprint,
-                version_block, already_generated, workspace_context=ctx
-            )
-            content = await claude.generate_file(prompt, system=file_gen_system)
-            dest = output_dir / file_plan.path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content)
-            already_generated.append(file_plan.path)
-            workspace.register_file(run_id, file_plan.path, status="shell-generated")
-
-        workspace.update_index(
-            run_id, agent="file-generator (shell)",
-            summary=f"Shell: {len(already_generated)} mobile files generated",
-            files_written=already_generated,
-        )
-        await _update_run(run_id, status="awaiting_shell_review")
-        await sse_manager.emit(  # noqa: E501
-            run_id, "shell_scaffolding",
-            f"Shell ready — {len(already_generated)} mobile files"
-        )
-        await sse_manager.emit_done(run_id, "awaiting_shell_review")
-
-    except Exception as e:
         try:
-            await _update_run(run_id, status="failed", error_summary=str(e))
-        except Exception:
-            pass
-        await sse_manager.emit_done(run_id, "failed")
-        raise
+            mobile_v, _ = await run_version_check(run_id)
+            version_block = format_versions_for_prompt(mobile_v, {})
+            file_gen_system = load_agent_instructions("file-generator.md")
+
+            mobile_files = [f for f in blueprint.file_plan if f.path.startswith("apps/mobile")]
+            output_dir = settings.generated_apps_path / run_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            already_generated: list[str] = []
+            for i, file_plan in enumerate(mobile_files, 1):
+                await sse_manager.emit(
+                    run_id, "shell_scaffolding",
+                    f"[{i}/{len(mobile_files)}] {file_plan.path}"
+                )
+                ctx = workspace.read_index(run_id)
+                prompt = _build_file_prompt(
+                    file_plan.path, file_plan.description, spec, blueprint,
+                    version_block, already_generated, workspace_context=ctx
+                )
+                content = await claude.generate_file(prompt, system=file_gen_system)
+                dest = output_dir / file_plan.path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content)
+                already_generated.append(file_plan.path)
+                workspace.register_file(run_id, file_plan.path, status="shell-generated")
+
+            workspace.update_index(
+                run_id, agent="file-generator (shell)",
+                summary=f"Shell: {len(already_generated)} mobile files generated",
+                files_written=already_generated,
+            )
+            await _update_run(run_id, status="awaiting_shell_review")
+            await sse_manager.emit(  # noqa: E501
+                run_id, "shell_scaffolding",
+                f"Shell ready — {len(already_generated)} mobile files"
+            )
+            await sse_manager.emit_done(run_id, "awaiting_shell_review")
+
+        except Exception as e:
+            try:
+                await _update_run(run_id, status="failed", error_summary=str(e))
+            except Exception:
+                pass
+            await sse_manager.emit_done(run_id, "failed")
+            raise
