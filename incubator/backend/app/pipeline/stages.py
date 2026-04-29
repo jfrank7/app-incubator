@@ -127,7 +127,7 @@ async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnsw
     with propagate_attributes(session_id=run_id):
         workspace.init_index(run_id)
         await _update_run(run_id, status="generating_spec")
-        await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")
+        await sse_manager.emit(run_id, "spec_generation", "Generating product spec with Claude Opus...")  # noqa: E501
         try:
             ctx = workspace.read_index(run_id)
             system = load_agent_instructions("spec-agent.md")
@@ -174,7 +174,7 @@ async def run_spec_generation(run_id: str, raw_idea: str, form_answers: FormAnsw
 async def run_blueprint_generation(run_id: str, spec: ProductSpec) -> None:
     with propagate_attributes(session_id=run_id):
         await _update_run(run_id, status="generating_blueprint")
-        await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")
+        await sse_manager.emit(run_id, "blueprint_generation", "Generating architecture blueprint...")  # noqa: E501
         try:
             ctx = workspace.read_index(run_id)
             system = load_agent_instructions("blueprint-agent.md")

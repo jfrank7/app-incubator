@@ -6,7 +6,9 @@
 
 **Architecture:** Decorate `ClaudeClient` methods with `@observe(as_type="generation")` and pipeline stage functions with `@observe()`. Each stage sets `session_id=run_id` on its trace so all stages of one pipeline run are grouped in the Langfuse Sessions view. Config is loaded via pydantic-settings and forwarded to `os.environ` in `config.py` so the Langfuse SDK can auto-discover keys.
 
-**Tech Stack:** `langfuse>=2.0.0` (PyPI), `langfuse.decorators.observe`, `langfuse.decorators.langfuse_context`, pydantic-settings, FastAPI.
+**Tech Stack:** `langfuse>=4.0.0` (PyPI), `langfuse.observe`, `langfuse.get_client`, `langfuse.propagate_attributes`, pydantic-settings, FastAPI.
+
+> **⚠️ API Note:** This plan was originally written for Langfuse v2/v3. The installed version is v4.5.1. Key differences: `langfuse.decorators` module does not exist in v4. Use `from langfuse import observe, get_client, propagate_attributes` instead. For ClaudeClient usage reporting use `get_client().update_current_generation(model=..., usage_details={"input_tokens": N, "output_tokens": N})`. For stage session grouping use `with propagate_attributes(session_id=run_id):` wrapping the entire function body.
 
 ---
 
