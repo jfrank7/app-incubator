@@ -42,8 +42,9 @@ async def test_generate_json_parses_response(client):
     mock_response = _make_mock_response(json.dumps(payload))
 
     with patch.object(client._client, "messages") as mock_msgs:
-        mock_msgs.create = AsyncMock(return_value=mock_response)
-        result = await client.generate_json("prompt")
+        with patch("app.services.claude_client.get_client"):
+            mock_msgs.create = AsyncMock(return_value=mock_response)
+            result = await client.generate_json("prompt")
 
     assert result["app_name"] == "Tracker"
 
@@ -55,8 +56,9 @@ async def test_generate_json_strips_markdown_fences(client):
     mock_response = _make_mock_response(fenced)
 
     with patch.object(client._client, "messages") as mock_msgs:
-        mock_msgs.create = AsyncMock(return_value=mock_response)
-        result = await client.generate_json("prompt")
+        with patch("app.services.claude_client.get_client"):
+            mock_msgs.create = AsyncMock(return_value=mock_response)
+            result = await client.generate_json("prompt")
 
     assert result["key"] == "value"
 
@@ -66,7 +68,8 @@ async def test_generate_file_strips_markdown_fences(client):
     mock_response = _make_mock_response("```python\nprint('hello')\n```")
 
     with patch.object(client._client, "messages") as mock_msgs:
-        mock_msgs.create = AsyncMock(return_value=mock_response)
-        result = await client.generate_file("generate a python file")
+        with patch("app.services.claude_client.get_client"):
+            mock_msgs.create = AsyncMock(return_value=mock_response)
+            result = await client.generate_file("generate a python file")
 
     assert result == "print('hello')"
